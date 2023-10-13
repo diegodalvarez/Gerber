@@ -30,6 +30,7 @@ src files:
 testNotebooks Files:
 * ```setup.py```: Downloads sample retursn data from yahoo finance
 * ```TestEfficientFrontier.ipynb```: Examines the differences between Efficient Frontiers using Gerber Covariance and Standard Covariance
+* ```TestRollingGerber.ipynb```: Look at the rolling Gerber correlation and standard rolling Gerber Correlation
 
 testScripts Files:
 * ```setup.py```: Downloads sample retursn data from yahoo finance
