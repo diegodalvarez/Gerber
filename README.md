@@ -17,6 +17,7 @@ Package for using the Gerber Statistic for various statistical techniques.
       └───testNotebooks
           │   setup.py
           │   TestEfficientFrontier.ipynb
+          │   TestRollingGerber.ipynb
       └───testScripts
           │   setup.py
           │   testMatrices.py
