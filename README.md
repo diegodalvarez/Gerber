@@ -22,6 +22,7 @@ Package for using the Gerber Statistic for various statistical techniques.
           │   setup.py
           │   testMatrices.py
           │   testGerberNp.py
+          │   testAutoGerberalation.py
 ```
 
 src files:
@@ -36,3 +37,4 @@ testScripts Files:
 * ```setup.py```: Downloads sample retursn data from yahoo finance
 * ```testMatrices.py```: Creates Sample covariance and correlation matrix using Gerber Statistic
 * ```testGerberNp.py```: Compares Gerber-based covariance and correlation matrix to standard
+* ```testAutoGerberlation.py```: Creats Gerber based autocorrelation and autocovariance matrix and the difference between Gerber and Pearson
