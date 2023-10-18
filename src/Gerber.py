@@ -27,69 +27,85 @@ class Gerber:
             id_vars = "Date", var_name = "ticker", value_name = "rtns").
             merge(right = self.hk, how = "inner", on = "ticker"))
         
+    def rolling_gerber_corr(self, window: int) -> pd.DataFrame:
+        
+        combined_tmp, combo = self._get_combined_tmp()
+        out = (combined_tmp.assign(
+            numerator = lambda x: x.m_ij.rolling(window = window).sum(),
+            denominator = lambda x: np.abs(x.m_ij).rolling(window = window).sum(),
+            gerber_stat = lambda x: x.numerator / x.denominator)
+            [["gerber_stat"]])
+        
+        return out
+        
+    def _get_combined_tmp(self):
+        
+        combinations = list(itertools.combinations(self.rtns.columns.to_list(),2))
+        for combo in combinations:
+
+            returns_tmp = (self.threshold_df[
+                ["Date", "ticker", "rtns"]].
+                query("ticker == [@combo[0], @combo[1]]").
+                 pivot(index = "Date", columns = "ticker", values = "rtns").
+                 rename(columns = 
+                        {combo[0]: "{}_rtns".format(combo[0]), 
+                         combo[1]: "{}_rtns".format(combo[1])}))
+
+            hk_rtmp = (self.threshold_df[
+                ["Date", "ticker", "h_k"]].
+                query("ticker == [@combo[0], @combo[1]]").
+                 pivot(index = "Date", columns = "ticker", values = "h_k").
+                 rename(columns = 
+                       {combo[0]: "{}_hk".format(combo[0]), 
+                        combo[1]: "{}_hk".format(combo[1])}))
+
+            combined_tmp = returns_tmp.merge(hk_rtmp, how = "inner", on = "Date")
+
+            combined_tmp.loc[
+                (combined_tmp["{}_rtns".format(combo[0])] >= combined_tmp["{}_hk".format(combo[0])]) &
+                (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
+                "m_ij"] = 1 
+
+            combined_tmp.loc[
+                (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
+                (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
+                "m_ij"] = 1
+
+            combined_tmp.loc[
+                (combined_tmp["{}_rtns".format(combo[0])] >=  combined_tmp["{}_hk".format(combo[0])]) &
+                (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
+                "m_ij"] = -1
+
+            combined_tmp.loc[
+                (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
+                (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
+                "m_ij"] = -1
+
+            combined_tmp = (combined_tmp.fillna(0)[["m_ij"]].assign(
+                ticker1 = combo[0], 
+                ticker2 = combo[1]))
+            
+            return combined_tmp, combo
+        
     def corr(self, method = "method1"):
     
         if method == "method2":
-    
-            combinations = list(itertools.combinations(self.rtns.columns.to_list(),2))
+            
             m_ij = pd.DataFrame(columns = ["Date", "m_ij", "ticker1", "ticker2"]).set_index("Date")
             gerber_stat = pd.DataFrame(columns = ["ticker1", "ticker2", "gerber_stat"])
+            combined_tmp, combo = self._get_combined_tmp()
+            
+            gerber_tmp = (pd.DataFrame(
+                {"ticker1": [combo[0]],
+                 "ticker2": [combo[1]],
+                 "gerber_stat": 
+                     [sum(combined_tmp["m_ij"]) / 
+                      sum(abs(combined_tmp["m_ij"]))]
+                }))
     
-            for combo in combinations:
-    
-                returns_tmp = (self.threshold_df[
-                    ["Date", "ticker", "rtns"]].
-                    query("ticker == [@combo[0], @combo[1]]").
-                     pivot(index = "Date", columns = "ticker", values = "rtns").
-                     rename(columns = 
-                            {combo[0]: "{}_rtns".format(combo[0]), 
-                             combo[1]: "{}_rtns".format(combo[1])}))
-    
-                hk_rtmp = (self.threshold_df[
-                    ["Date", "ticker", "h_k"]].
-                    query("ticker == [@combo[0], @combo[1]]").
-                     pivot(index = "Date", columns = "ticker", values = "h_k").
-                     rename(columns = 
-                           {combo[0]: "{}_hk".format(combo[0]), 
-                            combo[1]: "{}_hk".format(combo[1])}))
-    
-                combined_tmp = returns_tmp.merge(hk_rtmp, how = "inner", on = "Date")
-    
-                combined_tmp.loc[
-                    (combined_tmp["{}_rtns".format(combo[0])] >= combined_tmp["{}_hk".format(combo[0])]) &
-                    (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
-                    "m_ij"] = 1 
-    
-                combined_tmp.loc[
-                    (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
-                    (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
-                    "m_ij"] = 1
-    
-                combined_tmp.loc[
-                    (combined_tmp["{}_rtns".format(combo[0])] >=  combined_tmp["{}_hk".format(combo[0])]) &
-                    (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
-                    "m_ij"] = -1
-    
-                combined_tmp.loc[
-                    (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
-                    (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
-                    "m_ij"] = -1
-    
-                combined_tmp = (combined_tmp.fillna(0)[["m_ij"]].assign(
-                    ticker1 = combo[0], 
-                    ticker2 = combo[1]))
-    
-                gerber_tmp = (pd.DataFrame(
-                    {"ticker1": [combo[0]],
-                     "ticker2": [combo[1]],
-                     "gerber_stat": 
-                         [sum(combined_tmp["m_ij"]) / 
-                          sum(abs(combined_tmp["m_ij"]))]
-                    }))
-    
-                gerber_stat = gerber_stat.append(gerber_tmp)
-                m_ij = m_ij.append(combined_tmp)
-    
+            gerber_stat = gerber_stat.append(gerber_tmp)
+            m_ij = m_ij.append(combined_tmp)
+
             if len(gerber_stat.query("gerber_stat < 0")) > 0:
                 print("Gerber Matrix is not positive-definite")
     
