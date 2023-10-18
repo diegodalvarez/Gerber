@@ -12,8 +12,8 @@ import pandas as pd
 
 class Gerber:
     
-    def __init__(self, rtns, threshold = 1/2):
-        
+    def _setup(self, rtns: pd.DataFrame, threshold: float = 1/2):
+
         self.rtns = rtns
         self.stds = self.rtns.std().reset_index()
         self.stds_cols = self.stds.columns.to_list()
@@ -27,9 +27,11 @@ class Gerber:
             id_vars = "Date", var_name = "ticker", value_name = "rtns").
             merge(right = self.hk, how = "inner", on = "ticker"))
         
-    def rolling_gerber_corr(self, window: int) -> pd.DataFrame:
-        
+    def rolling_gerber_corr(self, rtns: pd.DataFrame, window: int, threshold: float = 1/2) -> pd.DataFrame:
+
+        self._setup(rtns = rtns, threshold = threshold)
         combined_tmp, combo = self._get_combined_tmp()
+
         out = (combined_tmp.assign(
             numerator = lambda x: x.m_ij.rolling(window = window).sum(),
             denominator = lambda x: np.abs(x.m_ij).rolling(window = window).sum(),
@@ -87,7 +89,9 @@ class Gerber:
             
             return combined_tmp, combo
         
-    def corr(self, method = "method1"):
+    def corr(self, rtns: pd.DataFrame, threshold: float = 1/2, method = "method1"):
+        
+        self._setup(rtns, threshold)
     
         if method == "method2":
             
@@ -145,9 +149,9 @@ class Gerber:
             
         return g_matrix
     
-    def cov(self, threshold = 1/2, method = "method1"):
+    def cov(self, rtns: pd.DataFrame, threshold: float = 1/2, method: str = "method1"):
         
-        self.corr = self.corr(method)
+        self.corr = self.corr(rtns = rtns, threshold = threshold, method = method)
         self.std_vec = self.rtns.std()
         self.cov = pd.DataFrame(
             data = np.dot(np.diag(self.std_vec), np.dot(self.corr, np.diag(self.std_vec))),
@@ -155,3 +159,25 @@ class Gerber:
             index = self.corr.columns)
         
         return self.cov
+    
+    def _get_lag(self, rtns: pd.Series, lags: int = 30) -> pd.DataFrame:
+
+        df_prep = (rtns.to_frame().sort_values(
+            rtns.index.name).
+            rename(columns = {rtns.name: "value"}))
+
+        for lag in range(lags): df_prep[lag+1] = df_prep["value"].shift(lag + 1)
+
+        return(df_prep.rename(columns = {"value": 0}))
+    
+    def auto_corr_matrix(self, rtns: pd.Series, lags: int = 30, threshold: float = 1/2, method: str = "method1") -> pd.DataFrame:
+
+        df_prep = self._get_lag(rtns = rtns, lags = lags)
+        corr = self.corr(rtns = df_prep, threshold = threshold, method = method)
+        return corr
+    
+    def auto_cov_matrix(self, rtns: pd.Series, lags: int = 30, threshold: float = 1/2, method: str = "method1") -> pd.DataFrame:
+
+        df_prep = self._get_lag(rtns = rtns, lags = lags)
+        cov = self.cov(rtns = df_prep, threshold = threshold, method = method)
+        return cov
