@@ -181,3 +181,12 @@ class Gerber:
         df_prep = self._get_lag(rtns = rtns, lags = lags)
         cov = self.cov(rtns = df_prep, threshold = threshold, method = method)
         return cov
+    
+    def autogerbercorr(self, ts: pd.Series, lags: int, threshold: float = 1/2, method: str = "method1") -> pd.Series:
+        
+        df = ts.rename(0).to_frame()
+        for i in range(1, lags): df[i] = ts.shift(i)
+        corr = self.corr(rtns = df, threshold = threshold, method = method)
+        corr.columns.name = "lag"
+        return corr[0]
+        
