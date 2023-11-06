@@ -23,15 +23,34 @@ class Gerber:
                 self.stds_cols[1]: "h_k"}).
             assign(h_k = lambda x: x.h_k * threshold))
     
-        self.threshold_df = (rtns.reset_index().melt(
-            id_vars = "Date", var_name = "ticker", value_name = "rtns").
+        self.threshold_df = (self.rtns.reset_index().melt(
+            id_vars = self.rtns.index.name, var_name = "ticker", value_name = "rtns").
             merge(right = self.hk, how = "inner", on = "ticker"))
         
     def rolling_gerber_corr(self, rtns: pd.DataFrame, window: int, threshold: float = 1/2) -> pd.DataFrame:
 
-        self._setup(rtns = rtns, threshold = threshold)
-        combined_tmp, combo = self._get_combined_tmp()
+        df_compare = (rtns.rolling(
+            window = window).
+            std().
+            dropna().
+            reset_index().
+            melt(id_vars = "date", value_name = "_std").
+            assign(hk = lambda x: x._std * threshold).
+            drop(columns = ["_std"]).
+            merge(
+                right = rtns.reset_index().melt(id_vars = "date", value_name = "rtns"),
+                how = "inner",
+                on = ["date", "variable"]))
 
+        combined_tmp = (df_compare.melt(
+            id_vars = ["date", "variable"], var_name = "stat", value_name = "num").
+            assign(name = lambda x: x.variable + "_" + x.stat).
+            drop(columns = ["variable", "stat"]).
+            pivot(index = "date", columns = "name", values = "num"))
+
+        combo = rtns.columns.to_list()
+        combined_tmp = self._get_stat(combined_tmp, combo)
+        
         out = (combined_tmp.assign(
             numerator = lambda x: x.m_ij.rolling(window = window).sum(),
             denominator = lambda x: np.abs(x.m_ij).rolling(window = window).sum(),
@@ -39,53 +58,58 @@ class Gerber:
             [["gerber_stat"]])
         
         return out
+    
+    def _get_stat(self, combined_tmp: pd.DataFrame, combo) -> pd.DataFrame:
+        
+        combined_tmp.loc[
+            (combined_tmp["{}_rtns".format(combo[0])] >= combined_tmp["{}_hk".format(combo[0])]) &
+            (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
+            "m_ij"] = 1 
+
+        combined_tmp.loc[
+            (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
+            (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
+            "m_ij"] = 1
+
+        combined_tmp.loc[
+            (combined_tmp["{}_rtns".format(combo[0])] >=  combined_tmp["{}_hk".format(combo[0])]) &
+            (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
+            "m_ij"] = -1
+
+        combined_tmp.loc[
+            (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
+            (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
+            "m_ij"] = -1
+
+        combined_tmp = (combined_tmp.fillna(0)[["m_ij"]].assign(
+            ticker1 = combo[0], 
+            ticker2 = combo[1]))
+        
+        return combined_tmp
         
     def _get_combined_tmp(self):
         
         combinations = list(itertools.combinations(self.rtns.columns.to_list(),2))
         for combo in combinations:
-
+            
             returns_tmp = (self.threshold_df[
-                ["Date", "ticker", "rtns"]].
+                [self.rtns.index.name, "ticker", "rtns"]].
                 query("ticker == [@combo[0], @combo[1]]").
-                 pivot(index = "Date", columns = "ticker", values = "rtns").
-                 rename(columns = 
-                        {combo[0]: "{}_rtns".format(combo[0]), 
-                         combo[1]: "{}_rtns".format(combo[1])}))
+                pivot(index = self.rtns.index.name, columns = "ticker", values = "rtns").
+                rename(columns = 
+                       {combo[0]: "{}_rtns".format(combo[0]), 
+                        combo[1]: "{}_rtns".format(combo[1])}))
 
             hk_rtmp = (self.threshold_df[
-                ["Date", "ticker", "h_k"]].
+                [self.rtns.index.name, "ticker", "h_k"]].
                 query("ticker == [@combo[0], @combo[1]]").
-                 pivot(index = "Date", columns = "ticker", values = "h_k").
-                 rename(columns = 
-                       {combo[0]: "{}_hk".format(combo[0]), 
-                        combo[1]: "{}_hk".format(combo[1])}))
+                pivot(index = self.rtns.index.name, columns = "ticker", values = "h_k").
+                rename(columns = 
+                      {combo[0]: "{}_hk".format(combo[0]), 
+                       combo[1]: "{}_hk".format(combo[1])}))
 
-            combined_tmp = returns_tmp.merge(hk_rtmp, how = "inner", on = "Date")
-
-            combined_tmp.loc[
-                (combined_tmp["{}_rtns".format(combo[0])] >= combined_tmp["{}_hk".format(combo[0])]) &
-                (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
-                "m_ij"] = 1 
-
-            combined_tmp.loc[
-                (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
-                (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
-                "m_ij"] = 1
-
-            combined_tmp.loc[
-                (combined_tmp["{}_rtns".format(combo[0])] >=  combined_tmp["{}_hk".format(combo[0])]) &
-                (combined_tmp["{}_rtns".format(combo[1])] <= - combined_tmp["{}_hk".format(combo[1])]), 
-                "m_ij"] = -1
-
-            combined_tmp.loc[
-                (combined_tmp["{}_rtns".format(combo[0])] <= - combined_tmp["{}_hk".format(combo[0])]) &
-                (combined_tmp["{}_rtns".format(combo[1])] >= combined_tmp["{}_hk".format(combo[1])]), 
-                "m_ij"] = -1
-
-            combined_tmp = (combined_tmp.fillna(0)[["m_ij"]].assign(
-                ticker1 = combo[0], 
-                ticker2 = combo[1]))
+            combined_tmp = returns_tmp.merge(hk_rtmp, how = "inner", on = self.rtns.index.name)
+            combined_tmp = self._get_stat(combined_tmp, combo)
             
             return combined_tmp, combo
         
@@ -95,7 +119,7 @@ class Gerber:
     
         if method == "method2":
             
-            m_ij = pd.DataFrame(columns = ["Date", "m_ij", "ticker1", "ticker2"]).set_index("Date")
+            m_ij = pd.DataFrame(columns = [self.rtns.index.name, "m_ij", "ticker1", "ticker2"]).set_index(self.rtns.index.name)
             gerber_stat = pd.DataFrame(columns = ["ticker1", "ticker2", "gerber_stat"])
             combined_tmp, combo = self._get_combined_tmp()
             
@@ -133,11 +157,11 @@ class Gerber:
             R = self.threshold_df.rename(columns = {"h_k": "h_j"})
             U = R
             U.loc[(U["rtns"] >= U["h_j"]), "u_tj"] = 1
-            U = U.fillna(0)[["Date", "ticker", "u_tj"]].pivot(index = "Date", columns = "ticker", values = "u_tj")
+            U = U.fillna(0)[[self.rtns.index.name, "ticker", "u_tj"]].pivot(index = self.rtns.index.name, columns = "ticker", values = "u_tj")
     
             D = R
             D.loc[(D["rtns"] <= - D["h_j"]), "d_tj"] = 1
-            D = D.fillna(0)[["Date", "ticker", "d_tj"]].pivot(index = "Date", columns = "ticker", values = "d_tj")
+            D = D.fillna(0)[[self.rtns.index.name, "ticker", "d_tj"]].pivot(index = self.rtns.index.name, columns = "ticker", values = "d_tj")
     
             N_UU = U.T.dot(U)
             N_DD = D.T.dot(D)
