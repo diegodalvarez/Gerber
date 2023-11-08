@@ -40,5 +40,6 @@ testScripts Files:
 * ```testMatrices.py```: Creates Sample covariance and correlation matrix using Gerber Statistic
 * ```testGerberNp.py```: Compares Gerber-based covariance and correlation matrix to standard
 * ```testAutoGerberlation.py```: Creats Gerber based autocorrelation and autocovariance matrix and the difference between Gerber and Pearson
+
 Example Files:
 * ```StockBondCorrelation.ipynb```: Analyzing rolling stock bond correlation using some examples from other research. Specifically looking at historical relationship using Shiller Data.
