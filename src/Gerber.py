@@ -8,7 +8,7 @@ Created on Sun Nov 20 07:09:41 2022
 import itertools
 import numpy as np
 import pandas as pd
-
+import statsmodels as sm
 
 class Gerber:
     
@@ -175,14 +175,14 @@ class Gerber:
     
     def cov(self, rtns: pd.DataFrame, threshold: float = 1/2, method: str = "method1"):
         
-        self.corr = self.corr(rtns = rtns, threshold = threshold, method = method)
+        self.corr_mat = self.corr(rtns = rtns, threshold = threshold, method = method)
         self.std_vec = self.rtns.std()
-        self.cov = pd.DataFrame(
-            data = np.dot(np.diag(self.std_vec), np.dot(self.corr, np.diag(self.std_vec))),
-            columns = self.corr.columns,
-            index = self.corr.columns)
+        self.cov_mat = pd.DataFrame(
+            data = np.dot(np.diag(self.std_vec), np.dot(self.corr_mat, np.diag(self.std_vec))),
+            columns = self.corr_mat.columns,
+            index = self.corr_mat.columns)
         
-        return self.cov
+        return self.cov_mat
     
     def _get_lag(self, rtns: pd.Series, lags: int = 30) -> pd.DataFrame:
 
@@ -213,4 +213,58 @@ class Gerber:
         corr = self.corr(rtns = df, threshold = threshold, method = method)
         corr.columns.name = "lag"
         return corr[0]
+    
+    def gerberOLS(self, endog: pd.Series, exog: pd.Series, threshold: float = 1/2, method: str = "method1") -> tuple:
+
+        rtns = endog.to_frame().merge(right = exog, how = "inner", on = exog.index.name)
+        cov_mat = self.cov(rtns = rtns, threshold = threshold, method = method)
+        cov_xy = cov_mat[endog.name][exog.name]
+        var_x = cov_mat[endog.name][endog.name]
+        
+        gerber_beta = cov_xy / var_x
+        gerber_alpha = endog.mean() - (gerber_beta * exog.mean())
+
+        return gerber_alpha, gerber_beta
+    
+    def rolling_gerber_OLS(
+            self,
+            endog: pd.Series, exog: pd.Series, 
+            window: float, verbose: bool = False, 
+            threshold: float = 1/2, method: str = "method1") -> pd.DataFrame:
+
+        rtns = (endog.to_frame().merge(
+            right = exog, how = "inner", on = endog.index.name).
+            rename(columns = {
+                endog.name: "endog",
+                exog.name: "exog"}))
+        
+        df_out = pd.DataFrame({
+            "alpha": [],
+            "beta": []})
+        
+        year = rtns.index[0].year
+        if verbose == True: print("Working on", year)
+
+        for i in range(len(rtns)):
+
+            if verbose == True:
+                old_year = rtns.index[i].year
+
+                if year != old_year:
+                    print("Working on", year)
+                    year = old_year
+
+            df_tmp = rtns.iloc[i-window: i]
+            if len(df_tmp) == window:
+
+                alpha, beta = self.gerberOLS(endog = df_tmp.endog, exog = df_tmp.exog)
+                df_combine = pd.DataFrame({"alpha": [alpha], "beta": [beta], "date": [rtns.index[i]]})
+                df_out = pd.concat([df_out, df_combine])
+
+            else: 
+
+                df_combine = pd.DataFrame({"alpha": [np.nan], "beta": [np.nan], "date": [rtns.index[i]]})
+                df_out = pd.concat([df_out, df_combine])
+            
+        return df_out
         
