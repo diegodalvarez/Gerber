@@ -267,4 +267,20 @@ class Gerber:
                 df_out = pd.concat([df_out, df_combine])
             
         return df_out
+    
+    def PCA(self, df: pd.DataFrame, n_components: int, scale: bool = True, threshold: float = 1/2, method: str = "method1"):
         
+        if scale == True: df = (df - df.mean(axis = 0)) / df.std(axis = 0)
+
+        cov_matrix = self.cov(rtns = df, threshold = threshold, method = method)
+        self.eigenvalues, self.eigenvectors = np.linalg.eig(cov_matrix)
+        
+        order = np.argsort(self.eigenvalues)[::-1]
+        self.sorted_eigenvalues = self.eigenvalues[order]
+        self.sorted_eigenvectors = self.eigenvectors[:, order]
+        
+        self.explained_variance = self.sorted_eigenvalues / np.sum(self.sorted_eigenvalues)
+        self.reduced_data = np.matmul(df, self.sorted_eigenvectors[:, :n_components])
+        self.reduced_data.columns = ["PC{}".format(i+1) for i in range(n_components)]
+        
+        return self.eigenvalues, self.eigenvectors, self.explained_variance, self.reduced_data
