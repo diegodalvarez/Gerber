@@ -284,3 +284,9 @@ class Gerber:
         self.reduced_data.columns = ["PC{}".format(i+1) for i in range(n_components)]
         
         return self.eigenvalues, self.eigenvectors, self.explained_variance, self.reduced_data
+    
+    def cumsum_comovement(self, df: pd.DataFrame) -> pd.DataFrame: 
+        
+        cumsum = np.cumsum((df / np.sqrt(df ** 2)).prod(axis = 1))
+        return(cumsum.to_frame().rename(
+            columns = {0: "cumsum"}))
