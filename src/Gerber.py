@@ -287,6 +287,27 @@ class Gerber:
     
     def cumsum_comovement(self, df: pd.DataFrame) -> pd.DataFrame: 
         
+        if len(df.columns.to_list()) != 2: raise ValueError("DataFrame must have exactly 2 columns")
+        
+        '''
+        index_name = df.index.name
+        df_longer = (df.reset_index().melt(
+            id_vars = index_name))
+        
+        df_zeros = (df_longer.query(
+            "value == 0").
+            date.
+            drop_duplicates().
+            to_list())
+        
+        if len(df_zeros) != 0: print("dropping {} points since they are zero-valued".format(len(df_zeros)))
+        
+        df_wider = (df_longer.query(
+            "value != 0").
+            pivot(index = index_name, columns = "variable", values = "value").
+            dropna())
+        '''
+        df = df.astype(float)
         cumsum = np.cumsum((df / np.sqrt(df ** 2)).prod(axis = 1))
         return(cumsum.to_frame().rename(
             columns = {0: "cumsum"}))
